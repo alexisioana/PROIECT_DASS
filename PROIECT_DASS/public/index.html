@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AuthX — Autentificare</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+
+    <div class="logo">
+      <h1>AuthX</h1>
+      <p>sistem intern de autentificare // AuthX Corp</p>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" data-tab="login">login</div>
+      <div class="tab" data-tab="register">register</div>
+      <div class="tab" data-tab="reset">reset</div>
+      <div class="tab" data-tab="profile">profil</div>
+      <div class="tab" data-tab="tickets">tickets</div>
+    </div>
+
+    <!-- ── LOGIN ───────────────────────────── -->
+    <div class="form-section active" id="login">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="login-email" placeholder="email@authx.internal">
+      </div>
+      <div class="form-group">
+        <label>Parolă</label>
+        <input type="password" id="login-password" placeholder="••••••••">
+      </div>
+      <button onclick="doLogin()">Autentificare</button>
+      <button onclick="doLogout()" class="secondary">Logout</button>
+      <div class="message" id="login-msg"></div>
+    </div>
+
+    <!-- ── REGISTER ────────────────────────── -->
+    <div class="form-section" id="register">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="reg-email" placeholder="email@authx.internal">
+      </div>
+      <div class="form-group">
+        <label>Parolă</label>
+        <input type="password" id="reg-password" placeholder="Minim 8 caractere">
+        <div class="helper">min. 8 caractere · 1 literă mare · 1 cifră · 1 caracter special</div>
+      </div>
+      <button onclick="doRegister()">Crează cont</button>
+      <div class="message" id="reg-msg"></div>
+    </div>
+
+    <!-- ── RESET PAROLĂ ─────────────────────── -->
+    <div class="form-section" id="reset">
+      <div class="form-group">
+        <label>Email pentru resetare</label>
+        <input type="email" id="forgot-email" placeholder="email@authx.internal">
+      </div>
+      <button onclick="doForgot()">Trimite link resetare</button>
+      <div class="message" id="forgot-msg"></div>
+
+      <hr>
+
+      <div class="form-group">
+        <label>Token (din consola serverului)</label>
+        <input type="text" id="reset-token" placeholder="64 caractere hex">
+      </div>
+      <div class="form-group">
+        <label>Parolă nouă</label>
+        <input type="password" id="reset-password" placeholder="Parolă nouă">
+      </div>
+      <button onclick="doReset()">Resetează parola</button>
+      <div class="message" id="reset-msg"></div>
+    </div>
+
+    <!-- ── PROFIL ───────────────────────────── -->
+    <div class="form-section" id="profile">
+      <button onclick="loadProfile()">Încarcă profil</button>
+      <div id="profile-info" style="display:none;"></div>
+      <div class="message" id="profile-msg"></div>
+    </div>
+
+    <!-- ── TICKETS ──────────────────────────── -->
+    <div class="form-section" id="tickets">
+      <div class="form-group">
+        <label>Titlu ticket nou</label>
+        <input type="text" id="ticket-title" placeholder="Descrie problema pe scurt...">
+      </div>
+      <div class="form-group">
+        <label>Descriere</label>
+        <textarea id="ticket-desc" placeholder="Detalii suplimentare..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>Severitate</label>
+        <select id="ticket-severity">
+          <option value="LOW">LOW</option>
+          <option value="MEDIUM">MEDIUM</option>
+          <option value="HIGH">HIGH</option>
+        </select>
+      </div>
+      <button onclick="createTicket()">Crează ticket</button>
+      <div class="message" id="ticket-msg"></div>
+
+      <hr>
+
+      <button onclick="loadTickets()" class="secondary">Încarcă lista tickets</button>
+      <div class="ticket-list" id="ticket-list"></div>
+
+      <hr>
+
+      <div class="form-group">
+        <label>Vezi ticket după ID (IDOR test)</label>
+        <input type="text" id="ticket-id-view" placeholder="ex: 3">
+      </div>
+      <button onclick="viewTicket()">Vezi ticket</button>
+      <div class="message" id="ticket-view-msg"></div>
+      <div id="ticket-detail" style="display:none;"></div>
+    </div>
+
+  </div><!-- /container -->
+
+  <script>
+    /* ── Tab switching ───────────────────── */
+    document.querySelectorAll('.tab').forEach(t => {
+      t.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+        document.querySelectorAll('.form-section').forEach(x => x.classList.remove('active'));
+        t.classList.add('active');
+        document.getElementById(t.dataset.tab).classList.add('active');
+      });
+    });
+
+    /* ── Helper: show message ────────────── */
+    function showMsg(id, text, type) {
+      const el = document.getElementById(id);
+      el.textContent = text;
+      el.className = 'message ' + type;
+    }
+
+    function hideMsg(id) {
+      document.getElementById(id).className = 'message';
+    }
+
+    /* ── Helper: generic fetch wrapper ──── */
+    async function api(path, body, method = 'POST') {
+      const res = await fetch(path, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: body !== null ? JSON.stringify(body) : undefined
+      });
+      return { status: res.status, data: await res.json() };
+    }
+
+    /* ── Auth ────────────────────────────── */
+    async function doRegister() {
+      const email    = document.getElementById('reg-email').value.trim();
+      const password = document.getElementById('reg-password').value;
+      if (!email || !password) {
+        showMsg('reg-msg', 'Completează toate câmpurile.', 'error');
+        return;
+      }
+      const r = await api('/api/auth/register', { email, password });
+      showMsg('reg-msg', r.data.message || r.data.error, r.status === 200 ? 'success' : 'error');
+    }
+
+    async function doLogin() {
+      const email    = document.getElementById('login-email').value.trim();
+      const password = document.getElementById('login-password').value;
+      if (!email || !password) {
+        showMsg('login-msg', 'Completează toate câmpurile.', 'error');
+        return;
+      }
+      const r = await api('/api/auth/login', { email, password });
+      showMsg('login-msg', r.data.message || r.data.error, r.status === 200 ? 'success' : 'error');
+    }
+
+    async function doLogout() {
+      const r = await api('/api/auth/logout', null);
+      showMsg('login-msg', r.data.message || r.data.error, r.status === 200 ? 'success' : 'error');
+    }
+
+    /* ── Password reset ──────────────────── */
+    async function doForgot() {
+      const email = document.getElementById('forgot-email').value.trim();
+      if (!email) {
+        showMsg('forgot-msg', 'Introdu adresa de email.', 'error');
+        return;
+      }
+      const r = await api('/api/password/forgot', { email });
+      showMsg('forgot-msg', r.data.message || r.data.error, r.status === 200 ? 'success' : 'error');
+    }
+
+    async function doReset() {
+      const token       = document.getElementById('reset-token').value.trim();
+      const newPassword = document.getElementById('reset-password').value;
+      if (!token || !newPassword) {
+        showMsg('reset-msg', 'Completează token-ul și parola nouă.', 'error');
+        return;
+      }
+      const r = await api('/api/password/reset', { token, newPassword });
+      showMsg('reset-msg', r.data.message || r.data.error, r.status === 200 ? 'success' : 'error');
+    }
+
+    /* ── Profile ─────────────────────────── */
+    async function loadProfile() {
+      hideMsg('profile-msg');
+      const res  = await fetch('/api/auth/profile', { credentials: 'include' });
+      const data = await res.json();
+      const info = document.getElementById('profile-info');
+      if (res.status === 200) {
+        info.textContent = JSON.stringify(data, null, 2);
+        info.style.display = 'block';
+      } else {
+        info.style.display = 'none';
+        showMsg('profile-msg', data.error || 'Neautorizat.', 'error');
+      }
+    }
+
+    /* ── Tickets ─────────────────────────── */
+    async function createTicket() {
+      const title       = document.getElementById('ticket-title').value.trim();
+      const description = document.getElementById('ticket-desc').value.trim();
+      const severity    = document.getElementById('ticket-severity').value;
+      if (!title) {
+        showMsg('ticket-msg', 'Titlul este obligatoriu.', 'error');
+        return;
+      }
+      const r = await api('/api/tickets', { title, description, severity });
+      showMsg('ticket-msg', r.data.message || r.data.error, r.status === 200 ? 'success' : 'error');
+      if (r.status === 200) {
+        document.getElementById('ticket-title').value = '';
+        document.getElementById('ticket-desc').value  = '';
+        loadTickets();
+      }
+    }
+
+    async function loadTickets() {
+      const res  = await fetch('/api/tickets', { credentials: 'include' });
+      const data = await res.json();
+      const list = document.getElementById('ticket-list');
+      if (res.status !== 200) {
+        list.innerHTML = '<div class="ticket-item">' + (data.error || 'Eroare la încărcare.') + '</div>';
+        return;
+      }
+      if (!data.length) {
+        list.innerHTML = '<div class="ticket-item">Niciun ticket găsit.</div>';
+        return;
+      }
+      list.innerHTML = data.map(t =>
+        `<div class="ticket-item">
+          <div class="ticket-title">#${t.id} — ${escapeHtml(t.title)}</div>
+          <div class="ticket-meta">
+            owner_id: ${t.owner_id} &nbsp;|&nbsp;
+            <span class="severity-${t.severity}">${t.severity}</span> &nbsp;|&nbsp;
+            ${t.status}
+          </div>
+        </div>`
+      ).join('');
+    }
+
+    async function viewTicket() {
+      const id   = document.getElementById('ticket-id-view').value.trim();
+      const info = document.getElementById('ticket-detail');
+      if (!id) {
+        showMsg('ticket-view-msg', 'Introdu un ID valid.', 'error');
+        info.style.display = 'none';
+        return;
+      }
+      hideMsg('ticket-view-msg');
+      const res  = await fetch('/api/tickets/' + encodeURIComponent(id), { credentials: 'include' });
+      const data = await res.json();
+      if (res.status !== 200) {
+        showMsg('ticket-view-msg', data.error || 'Ticket negăsit.', 'error');
+        info.style.display = 'none';
+        return;
+      }
+      info.textContent   = JSON.stringify(data, null, 2);
+      info.style.display = 'block';
+    }
+
+    /* ── Escape HTML (XSS prevention) ───── */
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;',
+        '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+  </script>
+</body>
+</html>
